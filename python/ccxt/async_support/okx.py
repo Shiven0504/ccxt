@@ -1359,6 +1359,7 @@ class okx(Exchange, ImplicitAPI):
                 'EUR': self.safe_currency_structure({'id': 'EUR', 'code': 'EUR', 'precision': self.parse_number('0.0001')}),
                 'AED': self.safe_currency_structure({'id': 'AED', 'code': 'AED', 'precision': self.parse_number('0.0001')}),
                 'GBP': self.safe_currency_structure({'id': 'GBP', 'code': 'GBP', 'precision': self.parse_number('0.0001')}),
+                'AUD': self.safe_currency_structure({'id': 'AUD', 'code': 'AUD', 'precision': self.parse_number('0.0001')}),
             },
             'commonCurrencies': {
                 # the exchange refers to ERC20 version of Aeternity(AEToken)
@@ -1667,6 +1668,12 @@ class okx(Exchange, ImplicitAPI):
         #         "uly": "BTC-USD"
         #     }
         #
+        # for swap "preopen" markets, only `instId` and `instType` are present
+        #
+        #         instId: "ETH-USD_UM-SWAP",
+        #         instType: "SWAP",
+        #         state: "preopen",
+        #
         id = self.safe_string(market, 'instId')
         type = self.safe_string_lower(market, 'instType')
         if type == 'futures':
@@ -1685,9 +1692,17 @@ class okx(Exchange, ImplicitAPI):
             parts = underlying.split('-')
             baseId = self.safe_string(parts, 0)
             quoteId = self.safe_string(parts, 1)
+        if ((baseId == '') or (quoteId == '')) and spot:  # to fix weird preopen markets
+            instId = self.safe_string(market, 'instId', '')
+            parts = instId.split('-')
+            baseId = self.safe_string(parts, 0)
+            quoteId = self.safe_string(parts, 1)
         base = self.safe_currency_code(baseId)
         quote = self.safe_currency_code(quoteId)
         symbol = base + '/' + quote
+        # handle preopen empty markets
+        if base == '' or quote == '':
+            symbol = id
         expiry = None
         strikePrice = None
         optionType = None
@@ -1711,6 +1726,7 @@ class okx(Exchange, ImplicitAPI):
         maxLeverage = self.safe_string(market, 'lever', '1')
         maxLeverage = Precise.string_max(maxLeverage, '1')
         maxSpotCost = self.safe_number(market, 'maxMktSz')
+        status = self.safe_string(market, 'state')
         return self.extend(fees, {
             'id': id,
             'symbol': symbol,
@@ -1726,7 +1742,7 @@ class okx(Exchange, ImplicitAPI):
             'swap': swap,
             'future': future,
             'option': option,
-            'active': True,
+            'active': status == 'live',
             'contract': contract,
             'linear': (quoteId == settleId) if contract else None,
             'inverse': (baseId == settleId) if contract else None,

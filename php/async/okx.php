@@ -1340,6 +1340,7 @@ class okx extends Exchange {
                 'EUR' => $this->safe_currency_structure(array( 'id' => 'EUR', 'code' => 'EUR', 'precision' => $this->parse_number('0.0001') )),
                 'AED' => $this->safe_currency_structure(array( 'id' => 'AED', 'code' => 'AED', 'precision' => $this->parse_number('0.0001') )),
                 'GBP' => $this->safe_currency_structure(array( 'id' => 'GBP', 'code' => 'GBP', 'precision' => $this->parse_number('0.0001') )),
+                'AUD' => $this->safe_currency_structure(array( 'id' => 'AUD', 'code' => 'AUD', 'precision' => $this->parse_number('0.0001') )),
             ),
             'commonCurrencies' => array(
                 // the exchange refers to ERC20 version of Aeternity (AEToken)
@@ -1676,6 +1677,12 @@ class okx extends Exchange {
         //         "uly" => "BTC-USD"
         //     }
         //
+        // for $swap "preopen" markets, only `$instId` and `instType` are present
+        //
+        //         $instId => "ETH-USD_UM-SWAP",
+        //         instType => "SWAP",
+        //         state => "preopen",
+        //
         $id = $this->safe_string($market, 'instId');
         $type = $this->safe_string_lower($market, 'instType');
         if ($type === 'futures') {
@@ -1696,9 +1703,19 @@ class okx extends Exchange {
             $baseId = $this->safe_string($parts, 0);
             $quoteId = $this->safe_string($parts, 1);
         }
+        if ((($baseId === '') || ($quoteId === '')) && $spot) { // to fix weird preopen markets
+            $instId = $this->safe_string($market, 'instId', '');
+            $parts = explode('-', $instId);
+            $baseId = $this->safe_string($parts, 0);
+            $quoteId = $this->safe_string($parts, 1);
+        }
         $base = $this->safe_currency_code($baseId);
         $quote = $this->safe_currency_code($quoteId);
         $symbol = $base . '/' . $quote;
+        // handle preopen empty markets
+        if ($base === '' || $quote === '') {
+            $symbol = $id;
+        }
         $expiry = null;
         $strikePrice = null;
         $optionType = null;
@@ -1727,6 +1744,7 @@ class okx extends Exchange {
         $maxLeverage = $this->safe_string($market, 'lever', '1');
         $maxLeverage = Precise::string_max($maxLeverage, '1');
         $maxSpotCost = $this->safe_number($market, 'maxMktSz');
+        $status = $this->safe_string($market, 'state');
         return $this->extend($fees, array(
             'id' => $id,
             'symbol' => $symbol,
@@ -1742,7 +1760,7 @@ class okx extends Exchange {
             'swap' => $swap,
             'future' => $future,
             'option' => $option,
-            'active' => true,
+            'active' => $status === 'live',
             'contract' => $contract,
             'linear' => $contract ? ($quoteId === $settleId) : null,
             'inverse' => $contract ? ($baseId === $settleId) : null,
